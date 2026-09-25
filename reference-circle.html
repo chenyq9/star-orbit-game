@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>
+<title>双圆</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#06060f;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+canvas{display:block;touch-action:none}
+#hud{position:fixed;top:14px;left:0;right:0;text-align:center;color:rgba(180,200,255,.6);font-size:13px;letter-spacing:2px;pointer-events:none;z-index:10}
+</style>
+</head>
+<body>
+<canvas id='c'></canvas>
+<div id='hud'>按住左圆或右圆拖动</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,cx,cy,R,lx,rx,gy,stars=[];
+let visual=[0,0];
+let balls=[];
+
+function resize(){
+  const dpr=window.devicePixelRatio||1;
+  W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  cx=W/2;cy=H/2;
+  R=Math.min(W*0.44,H*0.28);
+  lx=cx-R/2;rx=cx+R/2;
+  gy=Math.sqrt(3)/2*R;
+  stars=[];
+  for(let i=0;i<90;i++)stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+.3,a:Math.random()*.4+.15});
+}
+addEventListener('resize',resize);resize();
+
+function init(){
+  visual=[0,0];
+  balls=[];
+  [0,1,3,4,5,6,7,8,9,11].forEach(s=>balls.push({color:'b',L:s,R:null}));
+  [0,1,2,3,5,6,7,9,10,11].forEach(s=>balls.push({color:'o',L:null,R:s}));
+  balls.push({color:'g',L:10,R:8});
+  balls.push({color:'g',L:2,R:4});
+}
+init();
+
+function rotate(ci,dir){
+  if(ci===0){
+    for(const b of balls){if(b.L!==null)b.L=(b.L+dir+12)%12;}
+    for(const b of balls){
+      if(b.L===10)b.R=8;
+      else if(b.L===2)b.R=4;
+      else if(b.L!==null)b.R=null;
+    }
+  }else{
+    for(const b of balls){if(b.R!==null)b.R=(b.R+dir+12)%12;}
+    for(const b of balls){
+      if(b.R===8)b.L=10;
+      else if(b.R===4)b.L=2;
+      else if(b.R!==null)b.L=null;
+    }
+  }
+}
+
+function drawRing(ccx,rgb){
+  ctx.beginPath();ctx.arc(ccx,cy,R,0,7);
+  ctx.strokeStyle='rgba('+rgb+',.45)';ctx.lineWidth=2;ctx.stroke();
+  for(let i=0;i<12;i++){
+    const a=(i*30)*Math.PI/180;
+    ctx.beginPath();ctx.arc(ccx+R*Math.cos(a),cy+R*Math.sin(a),2,0,7);
+    ctx.fillStyle='rgba('+rgb+',.25)';ctx.fill();
+  }
+}
+
+function drawBallAt(x,y,color){
+  const r=R*.055;
+  const col=color==='b'?'#4a9eff':color==='o'?'#ff9a3c':'#d0a8ff';
+  const rgb=color==='b'?'74,158,255':color==='o'?'255,154,60':'208,168,255';
+  const g=ctx.createRadialGradient(x,y,0,x,y,r*2.2);
+  g.addColorStop(0,'rgba('+rgb+',.3)');g.addColorStop(1,'rgba('+rgb+',0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r*2.2,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();
+  ctx.beginPath();ctx.arc(x-r*.28,y-r*.28,r*.3,0,7);ctx.fillStyle='rgba(255,255,255,.45)';ctx.fill();
+}
+
+function draw(){
+  ctx.fillStyle='#06060f';ctx.fillRect(0,0,W,H);
+  for(const s of stars){ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,7);ctx.fillStyle='rgba(200,220,255,'+s.a+')';ctx.fill();}
+  drawRing(lx,'74,158,255');
+  drawRing(rx,'255,154,60');
+  [[cx,cy-gy],[cx,cy+gy]].forEach(([x,y])=>{
+    ctx.beginPath();ctx.arc(x,y,R*.08,0,7);
+    ctx.strokeStyle='rgba(208,168,255,.3)';ctx.lineWidth=1.5;ctx.stroke();
+  });
+
+  // 每个球只画一次
+  for(const b of balls){
+    let circle, pos;
+    if(b.L!==null && b.R!==null){
+      // 交点球：跟着正在拖的圆，没拖时按左圆
+      circle = drag ? drag.ci : 0;
+      pos = circle===0 ? b.L : b.R;
+    }else if(b.L!==null){
+      circle=0;pos=b.L;
+    }else if(b.R!==null){
+      circle=1;pos=b.R;
+    }else continue;
+
+    const ccx=circle===0?lx:rx;
+    const a=(pos+visual[circle])*30*Math.PI/180;
+    drawBallAt(ccx+R*Math.cos(a),cy+R*Math.sin(a),b.color);
+  }
+}
+
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  const r=cv.getBoundingClientRect();
+  const px=e.clientX-r.left,py=e.clientY-r.top;
+  const dL=Math.abs(Math.hypot(px-lx,py-cy)-R);
+  const dR=Math.abs(Math.hypot(px-rx,py-cy)-R);
+  const th=R*.7;
+  let ci=null;
+  if(dL<th&&dL<=dR)ci=0;else if(dR<th)ci=1;
+  if(ci===null)return;
+  const ccx=ci===0?lx:rx;
+  drag={ci,last:Math.atan2(py-cy,px-ccx)*180/Math.PI,accum:0,applied:0,id:e.pointerId};
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  const r=cv.getBoundingClientRect();
+  const px=e.clientX-r.left,py=e.clientY-r.top;
+  const ccx=drag.ci===0?lx:rx;
+  let a=Math.atan2(py-cy,px-ccx)*180/Math.PI;
+  let d=a-drag.last;
+  while(d>180)d-=360;
+  while(d<-180)d+=360;
+  drag.accum+=d;drag.last=a;
+  const wantSteps=Math.trunc(drag.accum/30);
+  while(drag.applied<wantSteps){rotate(drag.ci,1);drag.applied++;}
+  while(drag.applied>wantSteps){rotate(drag.ci,-1);drag.applied--;}
+  visual[drag.ci]=(drag.accum-drag.applied*30)/30;
+});
+function up(e){
+  if(!drag||e.pointerId!==drag.id)return;
+  const remain=visual[drag.ci];
+  if(remain>=0.5)rotate(drag.ci,1);
+  else if(remain<=-0.5)rotate(drag.ci,-1);
+  visual[drag.ci]=0;
+  drag=null;
+}
+cv.addEventListener('pointerup',up);
+cv.addEventListener('pointercancel',up);
+
+(function loop(){draw();requestAnimationFrame(loop);})();
+</script>
+</body>
+</html>
